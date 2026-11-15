@@ -1,0 +1,247 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ENTRANT
+  ADMIN
+}
+
+enum EntryStatus {
+  DRAFT
+  SUBMITTED
+  LOCKED
+  INVALIDATED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+}
+
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  COMPLETED
+}
+
+enum OverrideType {
+  QUALIFIED_ORDER
+  ENTRY_STATUS
+  ENTRY_PAYMENT
+  ENTRY_PICKS
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+  role          Role      @default(ENTRANT)
+  accounts      Account[]
+  sessions      Session[]
+  entries       Entry[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([sessionToken])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+model Entry {
+  id            String        @id @default(cuid())
+  name          String
+  status        EntryStatus   @default(DRAFT)
+  paymentStatus PaymentStatus @default(PENDING)
+  invalidReason String?
+  ownerId       String
+  owner         User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  picks         EntryPick[]
+  invalidPicks  EntryInvalidPick[]
+  submittedAt   DateTime?
+  lockedAt      DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([ownerId])
+  @@index([status, paymentStatus])
+}
+
+model EntryPick {
+  id        String         @id @default(cuid())
+  rank      Int
+  teamId    String
+  entryId   String
+  createdAt DateTime       @default(now())
+  entry      Entry         @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  team       TournamentTeam @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@unique([entryId, rank])
+  @@unique([entryId, teamId])
+  @@index([teamId])
+}
+
+model EntryInvalidPick {
+  id        String   @id @default(cuid())
+  rank      Int
+  label     String
+  reason    String
+  entryId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  entry     Entry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, rank])
+  @@index([entryId])
+}
+
+model TournamentTeam {
+  id                 String                     @id @default(cuid())
+  externalId         String?
+  code               String                     @unique
+  name               String
+  shortName          String?
+  groupName          String?
+  seed               Int?
+  isHost             Boolean                    @default(false)
+  isPlaceholder      Boolean                    @default(false)
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+  entryPicks         EntryPick[]
+  officialOrderItems OfficialQualifiedOrderItem[]
+  groupTableRows     GroupTableSnapshot[]
+  homeMatches        TournamentMatch[]          @relation("HomeTeam")
+  awayMatches        TournamentMatch[]          @relation("AwayTeam")
+
+  @@index([groupName])
+  @@index([externalId])
+}
+
+model TournamentMatch {
+  id          String           @id @default(cuid())
+  externalId  String?          @unique
+  stage       String
+  groupName   String?
+  venue       String?
+  kickoffAt   DateTime
+  status      MatchStatus      @default(SCHEDULED)
+  homeTeamId  String?
+  awayTeamId  String?
+  homeScore   Int?
+  awayScore   Int?
+  winnerTeamId String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  homeTeam    TournamentTeam?  @relation("HomeTeam", fields: [homeTeamId], references: [id], onDelete: SetNull)
+  awayTeam    TournamentTeam?  @relation("AwayTeam", fields: [awayTeamId], references: [id], onDelete: SetNull)
+
+  @@index([kickoffAt])
+  @@index([groupName, stage])
+}
+
+model GroupTableSnapshot {
+  id        String         @id @default(cuid())
+  groupName String
+  teamId     String
+  played    Int            @default(0)
+  won       Int            @default(0)
+  drawn     Int            @default(0)
+  lost      Int            @default(0)
+  goalsFor  Int            @default(0)
+  goalsAgainst Int         @default(0)
+  goalDiff  Int            @default(0)
+  yellowCards Int          @default(0)
+  redCards  Int            @default(0)
+  points    Int            @default(0)
+  rank      Int            @default(1)
+  updatedAt DateTime       @updatedAt
+  team      TournamentTeam @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([groupName, teamId])
+  @@index([groupName, rank])
+}
+
+model OfficialQualifiedOrder {
+  id          String                     @id @default(cuid())
+  source      String
+  notes       String?
+  isActive    Boolean                    @default(true)
+  publishedAt DateTime                   @default(now())
+  items       OfficialQualifiedOrderItem[]
+
+  @@index([isActive, publishedAt])
+}
+
+model OfficialQualifiedOrderItem {
+  id      String                @id @default(cuid())
+  rank    Int
+  orderId String
+  teamId  String
+  order   OfficialQualifiedOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  team    TournamentTeam        @relation(fields: [teamId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, rank])
+  @@unique([orderId, teamId])
+}
+
+model AdminOverride {
+  id         String       @id @default(cuid())
+  type       OverrideType
+  actorId    String?
+  actorEmail String?
+  targetId   String?
+  reason     String?
+  payload    String
+  createdAt  DateTime     @default(now())
+
+  @@index([type, createdAt])
+}
+
+model SyncCheckpoint {
+  id            String   @id @default(cuid())
+  provider      String   @unique
+  status        String
+  message       String?
+  lastAttemptAt DateTime?
+  lastSuccessAt DateTime?
+  updatedAt     DateTime @updatedAt
+}

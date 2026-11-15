@@ -1,0 +1,27 @@
+# Dependabot security updates only. Each ecosystem's fixes arrive as one
+# grouped pull request, and open-pull-requests-limit: 0 turns off routine
+# version-update PRs to keep GitHub Actions minutes down. Alerts and security
+# updates are enabled in the repository settings.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directories:
+      - "**/*"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      github-actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
